@@ -1,0 +1,26 @@
+# Core AI
+torch
+torchvision
+torchaudio
+timm
+
+# Web UI
+streamlit
+
+# NLP + LLMs
+transformers
+sentencepiece
+accelerate
+huggingface-hub
+
+# FAISS + embeddings
+faiss-cpu
+sentence-transformers
+
+# Seguridad / guardrails
+guardrails-ai>=0.4.0
+
+# Utils
+pydantic
+python-dotenv
+
