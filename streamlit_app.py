@@ -301,6 +301,17 @@ def main():
     st.set_page_config(page_title="Product ID + LLM Agent", layout='wide')
     st.title("Identificador de razas canina + Asistente (ViT + LLM)")
 
+    # Crear pestañas para la aplicación
+    tab1, tab2 = st.tabs(["🐕 Identificador + Chat", "📊 Dashboard de Evaluación"])
+    
+    with tab1:
+        render_main_interface()
+    
+    with tab2:
+        render_evaluation_dashboard()
+
+def render_main_interface():
+    """Renderizar la interfaz principal de identificación y chat"""
     left, right = st.columns([1,1])
     with left:
         uploaded = st.file_uploader("Subí una imagen del perro", type=['jpg','jpeg','png'])
@@ -402,9 +413,8 @@ def main():
                 multiagent_metrics = multiagent_metrics_calculator.calculate_multiagent_metrics()
                 st.metric("Multiagent Score", f"{multiagent_metrics.efficiency_score:.1f}")
                 
-                # Botón para abrir dashboard completo
-                if st.button("📊 Abrir Dashboard de Evaluación"):
-                    st.info("Dashboard de evaluación disponible en: /evaluation")
+                # Información sobre el dashboard integrado
+                st.info("💡 **Dashboard de evaluación disponible en la pestaña '📊 Dashboard de Evaluación'**")
                 
             except Exception as e:
                 st.warning(f"⚠️ Error cargando sistema de evaluación: {e}")
@@ -434,6 +444,34 @@ def main():
         # Mostrar información del sistema en el chat
         if st.session_state['chat_history']:
             st.info("🤖 **Sistema Multiagente Activo:**\n- ✅ RAG híbrido (BM25 + Pinecone + CrossEncoder)\n- ✅ Guardrails de seguridad\n- ✅ Agentes especializados (Research, Summarizer, Validator)\n- ✅ Herramientas externas (Wikipedia, ArXiv)\n- ✅ Memoria persistente y orquestación inteligente")
+
+def render_evaluation_dashboard():
+    """Renderizar el dashboard de evaluación integrado"""
+    try:
+        from app.evaluation.dashboard import evaluation_dashboard
+        
+        # Renderizar el dashboard completo
+        evaluation_dashboard.render_dashboard()
+        
+    except Exception as e:
+        st.error(f"Error al cargar el dashboard de evaluación: {e}")
+        st.write("Por favor, verifica que todas las dependencias estén instaladas correctamente.")
+        
+        # Mostrar información básica si el dashboard falla
+        st.subheader("📊 Métricas Básicas del Sistema")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("🔍 IR Score", "0.000", delta="Sin datos")
+        
+        with col2:
+            st.metric("🛡️ Security Score", "0.0", delta="Sin datos")
+        
+        with col3:
+            st.metric("🤖 Multiagent Score", "0.0", delta="Sin datos")
+        
+        st.info("💡 **Para ver métricas detalladas, usa el sistema de chat primero para generar datos de evaluación.**")
 
 if __name__ == "__main__":
     main()
