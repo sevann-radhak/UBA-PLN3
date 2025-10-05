@@ -276,3 +276,4 @@ class DogBreedKnowledgeBase:
             documents.append(doc)
         
         return documents
+

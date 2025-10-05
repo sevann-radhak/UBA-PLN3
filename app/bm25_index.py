@@ -37,3 +37,4 @@ class BM25Index:
         idx_sorted = np.argsort(scores)[::-1][:top_k]
         
         return [(int(i), float(scores[int(i)])) for i in idx_sorted]
+

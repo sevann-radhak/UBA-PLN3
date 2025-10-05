@@ -41,3 +41,4 @@ class CrossEncoderReranker:
         results.sort(key=lambda x: x[3], reverse=True)
         
         return results
+

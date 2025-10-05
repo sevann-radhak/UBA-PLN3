@@ -96,3 +96,4 @@ def calculate_metrics(all_results: List[List[str]],
         avg_metrics[metric] = np.mean(values) if values else 0.0
     
     return avg_metrics
+
