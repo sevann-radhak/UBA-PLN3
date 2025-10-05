@@ -13,9 +13,11 @@ sentencepiece
 accelerate
 huggingface-hub
 
-# FAISS + embeddings
+# RAG Pipeline (Clase 1)
 faiss-cpu
 sentence-transformers
+rank-bm25
+pinecone
 
 # Seguridad / guardrails
 guardrails-ai>=0.4.0
@@ -23,4 +25,6 @@ guardrails-ai>=0.4.0
 # Utils
 pydantic
 python-dotenv
+numpy
+pandas
 

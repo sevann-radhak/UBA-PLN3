@@ -24,10 +24,19 @@ val_tf = transforms.Compose([
 from app.vision_service import VisionService
 
 # --- Configuración del LLM y API ---
-# La API_KEY será proporcionada automáticamente en el entorno de Canvas
+# Cargar variables de entorno desde .env
+from dotenv import load_dotenv
+load_dotenv()
 
-API_KEY = os.environ.get('API_KEY_GEMINI') 
-API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={API_KEY}"
+# Obtener API key con verificación
+API_KEY = os.getenv('API_KEY_GEMINI') 
+
+# Verificar que la API key se cargó correctamente
+if not API_KEY:
+    st.error("❌ API_KEY_GEMINI no encontrada. Verifica el archivo .env")
+    st.stop()
+
+API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={API_KEY}"
 
 #@st.cache_resource
 #def load_services(model_path):
@@ -36,60 +45,74 @@ API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-f
 #    vs = VisionService(model_path)
 #    return vs
 
-def run_llm_agent(breed_name, user_query):
+def run_llm_agent_with_rag(breed_name, user_query):
     """
-    Ejecuta el agente LLM para responder a la pregunta del usuario.
-    Usa la API de Gemini con la herramienta de búsqueda de Google.
+    Ejecuta el agente LLM con RAG híbrido para responder preguntas sobre razas.
+    Implementa pipeline RAG completo según Clase 1.
     """
-    system_prompt = f"Actúa como un experto en la raza de perro {breed_name}. Responde a las preguntas del usuario basándote en la información más relevante y actual que puedas encontrar. Sé conciso, responde con pocas palabras, y amigable. Si no puedes encontrar una respuesta, indícalo."
-    
-    # Payload para la API, usando la herramienta de búsqueda de Google
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": user_query}
-                ]
-            }
-        ],
-        "tools": [{"google_search": {}}],
-        "systemInstruction": {
-            "parts": [{"text": system_prompt}]
-        }
-    }
-    
     try:
+        # Importar RAG pipeline
+        from app.rag_pipeline import DogBreedRAGPipeline
+        
+        # Inicializar RAG pipeline
+        rag_pipeline = DogBreedRAGPipeline()
+        
+        # Obtener información contextual con RAG
+        context = rag_pipeline.get_breed_info(breed_name, user_query)
+        
+        # Construir prompt estructurado
+        system_prompt = f"""
+        Eres un experto en la raza de perro {breed_name}.
+        Usa SOLO la información proporcionada para responder.
+        
+        Información sobre {breed_name}:
+        {context}
+        
+        Pregunta del usuario: {user_query}
+        
+        Responde de manera concisa, precisa y amigable.
+        Si la información no está disponible, indícalo claramente.
+        """
+        
+        # Payload para Gemini
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": system_prompt}
+                    ]
+                }
+            ],
+            "systemInstruction": {
+                "parts": [{"text": "Eres un experto en razas de perros. Responde basándote en la información proporcionada."}]
+            }
+        }
+        
+        # Llamada a Gemini
         response = requests.post(
             API_URL, 
             headers={'Content-Type': 'application/json'},
             data=json.dumps(payload)
         )
-        response.raise_for_status() # Lanza un error para códigos de estado HTTP malos
+        response.raise_for_status()
         result = response.json()
         
-        # Extraer el texto de la respuesta del LLM
+        # Extraer respuesta
         candidate = result.get('candidates', [{}])[0]
         text_part = candidate.get('content', {}).get('parts', [{}])[0].get('text', "")
         
-        # Opcional: Extraer la fuente de la información (RAG)
-        # Esto te permite citar las fuentes, lo cual es una buena práctica.
-        grounding_metadata = candidate.get('groundingMetadata', {})
-        sources = grounding_metadata.get('groundingAttributions', [])
+        # Añadir información de fuentes
+        source_info = "\n\n**Fuentes:** Base de conocimiento de razas de perros (RAG híbrido)"
+        return text_part + source_info
         
-        source_links = [s.get('web', {}).get('uri') for s in sources]
-        source_titles = [s.get('web', {}).get('title') for s in sources]
-        
-        # Formatear la respuesta para incluir fuentes
-        if source_links:
-            source_info = "\n\n**Fuentes:**\n" + "\n".join([f"- [{title}]({uri})" for title, uri in zip(source_titles, source_links)])
-            return text_part + source_info
-        else:
-            return text_part
-            
-    except requests.exceptions.RequestException as e:
-        return f"Error al contactar al asistente. Por favor, intentá de nuevo. (Error: {e})"
-    except (KeyError, IndexError) as e:
-        return f"No se pudo procesar la respuesta del asistente. (Error: {e})"
+    except Exception as e:
+        return f"Error al procesar la consulta con RAG. Por favor, intentá de nuevo. (Error: {e})"
+
+def run_llm_agent(breed_name, user_query):
+    """
+    Función de compatibilidad - redirige a RAG
+    """
+    return run_llm_agent_with_rag(breed_name, user_query)
 
 @st.cache_resource
 def load_services(model_path, model_name="vit_base_patch16_224"):
