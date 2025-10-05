@@ -91,7 +91,14 @@ UBA-PLN3/
 ```
 
 ### Notas Importantes:
-- **📁 Modelo grande:** El archivo `best_model.pt` pesa ~329MB
+- **📁 Modelo grande:** El archivo `best_model.pt` pesa ~329MB (no incluido en el repo)
 - **🔑 API Keys:** Necesarias para funcionamiento completo
 - **💾 Memoria:** Requiere al menos 4GB RAM para el modelo
 - **⏱️ Primera ejecución:** Puede tardar 2-3 minutos en cargar el modelo
+
+### ⚠️ Modelo Entrenado:
+El modelo `best_model.pt` no está incluido en el repositorio debido a su tamaño (329MB). Para obtenerlo:
+
+1. **Entrenar localmente:** Ejecuta `python scripts/train_vit.py`
+2. **Solicitar modelo:** Contacta al desarrollador para obtener el archivo
+3. **Usar modelo pre-entrenado:** Descarga un modelo ViT pre-entrenado y ajusta la configuración
