@@ -63,6 +63,9 @@ models/checkpoints/
 *.h5
 *.hdf5
 
+# BUT allow the trained model for deployment
+!models/checkpoints/best_model.pt
+
 # Data files (large datasets)
 data/images/
 data/annotations/
