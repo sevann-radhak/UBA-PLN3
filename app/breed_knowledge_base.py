@@ -276,4 +276,29 @@ class DogBreedKnowledgeBase:
             documents.append(doc)
         
         return documents
+    
+    def get_breed_info_text(self, breed_name: str) -> str:
+        """Obtener información de texto de una raza específica"""
+        # Buscar por nombre exacto o parcial
+        breed_info = None
+        for breed_id, info in self.breed_database.items():
+            if breed_name.lower() in info.breed_name.lower() or info.breed_name.lower() in breed_name.lower():
+                breed_info = info
+                break
+        
+        if breed_info:
+            return f"""
+            Raza: {breed_info.breed_name}
+            Características: {breed_info.characteristics}
+            Temperamento: {breed_info.temperament}
+            Cuidados: {breed_info.care_requirements}
+            Salud: {breed_info.health_issues}
+            Entrenamiento: {breed_info.training_advice}
+            Origen: {breed_info.origin}
+            Tamaño: {breed_info.size}
+            Energía: {breed_info.energy_level}
+            Vida: {breed_info.life_expectancy}
+            Aseo: {breed_info.grooming_needs}
+            """
+        return "Información no disponible para esta raza."
 

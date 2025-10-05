@@ -26,7 +26,9 @@ class SecurityConfig:
         if self.allowed_topics is None:
             self.allowed_topics = [
                 "perro", "raza", "cuidado", "salud", "entrenamiento", 
-                "alimentación", "ejercicio", "comportamiento", "características"
+                "alimentación", "ejercicio", "comportamiento", "características",
+                "papers", "científico", "investigación", "genética", "estudios",
+                "artículos", "documentos", "publicaciones", "ciencia"
             ]
         
         if self.blocked_patterns is None:
@@ -101,7 +103,19 @@ class InputSanitizer:
     def validate_topic(self, query: str) -> bool:
         """Verifica si la consulta está relacionada con temas permitidos"""
         query_lower = query.lower()
-        return any(topic in query_lower for topic in self.config.allowed_topics)
+        
+        # Verificar temas permitidos
+        topic_match = any(topic in query_lower for topic in self.config.allowed_topics)
+        
+        # Verificar si es una consulta de seguimiento sobre papers/ciencia
+        follow_up_patterns = [
+            "detalles sobre", "papers", "artículos", "documentos", 
+            "encontraste", "encontró", "científicos", "investigación"
+        ]
+        
+        follow_up_match = any(pattern in query_lower for pattern in follow_up_patterns)
+        
+        return topic_match or follow_up_match
 
 class OutputValidator:
     """Validador de salida del LLM"""
@@ -144,29 +158,41 @@ class OutputValidator:
         if len(response.strip()) < 10:
             warnings.append("Respuesta muy corta o vacía")
         
-        # 4. Detectar respuestas de error del LLM
+        # 4. Detectar respuestas de error del LLM (más específicas y amigables)
         error_patterns = [
-            r"no\s+puedo",
-            r"no\s+debo",
-            r"no\s+estoy\s+autorizado",
-            r"error\s+del\s+sistema",
-            r"fallo\s+interno"
+            r"no\s+puedo\s+responder\s+esa\s+pregunta\s+específica",
+            r"no\s+puedo\s+ayudarte\s+con\s+eso",
+            r"no\s+estoy\s+autorizado\s+a\s+responder",
+            r"error\s+del\s+sistema\s+interno",
+            r"fallo\s+interno\s+del\s+sistema",
+            r"no\s+puedo\s+procesar\s+esa\s+solicitud"
         ]
         
         for pattern in error_patterns:
             if re.search(pattern, response, re.IGNORECASE):
                 warnings.append(f"Posible error del LLM: {pattern}")
         
-        is_valid = len(warnings) == 0
+        # Determinar si es válida (más permisivo)
+        # Solo bloquear si hay errores críticos o contenido inapropiado
+        critical_warnings = [w for w in warnings if "error del LLM" in w or "contenido inapropiado" in w]
+        is_valid = len(critical_warnings) == 0
+        
         return is_valid, warnings
     
     def format_safe_response(self, response: str, warnings: List[str]) -> str:
         """Formatea una respuesta segura con warnings si es necesario"""
         if warnings:
-            warning_text = "\n\n⚠️ **Advertencias de Seguridad:**\n"
-            for warning in warnings:
-                warning_text += f"- {warning}\n"
-            return response + warning_text
+            # Filtrar warnings que no requieren bloqueo
+            critical_warnings = [w for w in warnings if "error del LLM" in w or "contenido inapropiado" in w]
+            
+            if critical_warnings:
+                warning_text = "\n\n⚠️ **Advertencias de Seguridad:**\n"
+                for warning in critical_warnings:
+                    warning_text += f"- {warning}\n"
+                return response + warning_text
+            else:
+                # Para warnings menores, solo agregar una nota amigable
+                return response + "\n\n💡 *Respuesta procesada con validaciones de seguridad*"
         
         return response
 

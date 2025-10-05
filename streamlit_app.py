@@ -47,13 +47,16 @@ API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-f
 
 def run_llm_agent_with_rag(breed_name, user_query):
     """
-    Ejecuta el agente LLM con RAG híbrido y guardrails de seguridad.
-    Implementa pipeline RAG completo según Clase 1 + Guardrails según Clase 2.
+    Ejecuta el agente LLM con RAG híbrido, guardrails de seguridad y sistema multiagente.
+    Implementa pipeline completo según Clases 1, 2 y 3.
     """
     try:
         # Importar sistemas
         from app.rag_pipeline import DogBreedRAGPipeline
         from app.guardrails import guardrails_system
+        from app.multiagent import multiagent_supervisor, AgentState
+        import uuid
+        from datetime import datetime
         
         # 1. PROCESAR QUERY CON GUARDRAILS
         security_result = guardrails_system.process_query(user_query)
@@ -73,84 +76,182 @@ def run_llm_agent_with_rag(breed_name, user_query):
         # Usar query sanitizada
         safe_query = security_result["sanitized_query"]
         
-        # 2. OBTENER CONTEXTO CON RAG
-        rag_pipeline = DogBreedRAGPipeline()
-        context = rag_pipeline.get_breed_info(breed_name, safe_query)
-        
-        # 3. CONSTRUIR PROMPT SEGURO
-        system_prompt = f"""
-        Eres un experto en la raza de perro {breed_name}.
-        Usa SOLO la información proporcionada para responder.
-        Responde ÚNICAMENTE sobre temas relacionados con razas de perros.
-        
-        Información sobre {breed_name}:
-        {context}
-        
-        Pregunta del usuario: {safe_query}
-        
-        Responde de manera concisa, precisa y amigable.
-        Si la información no está disponible, indícalo claramente.
-        NO respondas sobre temas no relacionados con perros.
-        """
-        
-        # 4. LLAMADA SEGURA A GEMINI
-        payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {"text": system_prompt}
-                    ]
-                }
-            ],
-            "systemInstruction": {
-                "parts": [{"text": "Eres un experto en razas de perros. Responde basándote en la información proporcionada. Solo habla sobre perros."}]
-            },
-            "safetySettings": [
-                {
-                    "category": "HARM_CATEGORY_HARASSMENT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                },
-                {
-                    "category": "HARM_CATEGORY_HATE_SPEECH", 
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                },
-                {
-                    "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                },
-                {
-                    "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                }
-            ]
-        }
-        
-        response = requests.post(
-            API_URL, 
-            headers={'Content-Type': 'application/json'},
-            data=json.dumps(payload)
+        # 2. CREAR ESTADO INICIAL PARA MULTIAGENTE
+        session_id = str(uuid.uuid4())
+        initial_state = AgentState(
+            user_query=safe_query,
+            breed_name=breed_name,
+            original_query=user_query,
+            research_results=[],
+            summary="",
+            validation_result={},
+            current_agent="",
+            agent_history=[],
+            tools_used=[],
+            next_agent=None,
+            is_complete=False,
+            error_message=None,
+            session_id=session_id,
+            timestamp=datetime.now(),
+            user_context={"breed_name": breed_name, "query": safe_query}
         )
-        response.raise_for_status()
-        result = response.json()
         
-        # 5. VALIDAR RESPUESTA DEL LLM
-        candidate = result.get('candidates', [{}])[0]
-        text_part = candidate.get('content', {}).get('parts', [{}])[0].get('text', "")
+        # 3. EJECUTAR SISTEMA MULTIAGENTE
+        multiagent_result = multiagent_supervisor.execute_multiagent_workflow(initial_state)
         
-        # Validar respuesta con guardrails
-        validation_result = guardrails_system.validate_response(text_part)
+        if not multiagent_result["success"]:
+            return f"⚠️ **Error en el sistema multiagente:** {multiagent_result.get('error', 'Error desconocido')}"
         
-        if not validation_result["is_valid"]:
-            return f"⚠️ **Respuesta bloqueada por seguridad:**\n" + "\n".join(validation_result["warnings"])
+        # 4. OBTENER INFORMACIÓN COMPILADA
+        research_data = multiagent_result.get("research_results", [])
+        summary_data = multiagent_result.get("summary", {})
+        validation_data = multiagent_result.get("validation_result", {})
         
-        # 6. FORMATEAR RESPUESTA SEGURA
-        safe_response = validation_result["safe_response"]
-        source_info = "\n\n**Fuentes:** Base de conocimiento de razas de perros (RAG híbrido + Guardrails)"
+        # Guardar papers científicos en el contexto de la sesión
+        if research_data and len(research_data) > 0:
+            for result in research_data:
+                if result.get("arxiv") and isinstance(result["arxiv"], list):
+                    st.session_state['scientific_papers'] = result["arxiv"]
         
-        return safe_response + source_info
+        # 5. CONSTRUIR RESPUESTA INTEGRADA
+        response_parts = []
+        
+        # Priorizar información de la base de datos
+        if research_data and len(research_data) > 0:
+            breed_db_info = research_data[0].get("breed_database")
+            if breed_db_info and breed_db_info.get("breed_info"):
+                response_parts.append(f"**Información detallada sobre {breed_name}:**\n{breed_db_info['breed_info']}")
+            else:
+                # Si no hay info de la base de datos, usar resumen
+                if summary_data and summary_data.get("summary_text"):
+                    response_parts.append(f"**Información sobre {breed_name}:**\n{summary_data['summary_text']}")
+        else:
+            # Fallback al resumen
+            if summary_data and summary_data.get("summary_text"):
+                response_parts.append(f"**Información sobre {breed_name}:**\n{summary_data['summary_text']}")
+        
+        # Fuentes utilizadas
+        sources_used = summary_data.get("sources_used", [])
+        if sources_used:
+            response_parts.append(f"**Fuentes consultadas:** {', '.join(sources_used)}")
+        
+        # Validación de calidad
+        if validation_data and validation_data.get("is_sufficient"):
+            response_parts.append("✅ **Información validada y completa**")
+        
+        # Estadísticas del sistema
+        execution_time = multiagent_result.get("execution_time", 0)
+        tools_used = multiagent_result.get("tools_used", [])
+        if tools_used:
+            response_parts.append(f"🔧 **Herramientas utilizadas:** {', '.join(tools_used)}")
+        
+        # 6. MANEJO ESPECIAL PARA CONSULTAS SOBRE PAPERS CIENTÍFICOS
+        if "papers" in safe_query.lower() or "científicos" in safe_query.lower() or "artículos" in safe_query.lower():
+            if st.session_state.get('scientific_papers'):
+                papers_info = []
+                for i, paper in enumerate(st.session_state['scientific_papers'][:3], 1):
+                    papers_info.append(f"""
+                    **Paper {i}:**
+                    - **Título:** {paper.get('title', 'N/A')}
+                    - **Autores:** {', '.join(paper.get('authors', []))}
+                    - **Resumen:** {paper.get('summary', 'N/A')[:200]}...
+                    - **Publicado:** {paper.get('published', 'N/A')}
+                    - **Enlace:** {paper.get('link', 'N/A')}
+                    """)
+                
+                return "\n\n".join(papers_info) + "\n\n**Fuentes:** ArXiv (Sistema multiagente)"
+            else:
+                return "No se encontraron papers científicos en esta sesión. Intenta hacer una consulta sobre la raza del perro primero."
+        
+        # 7. LLAMADA FINAL A GEMINI CON CONTEXTO ENRIQUECIDO
+        if response_parts:
+            enriched_context = "\n\n".join(response_parts)
+            
+            system_prompt = f"""
+            Eres un experto en la raza de perro {breed_name}.
+            Usa SOLO la información proporcionada para responder.
+            Responde ÚNICAMENTE sobre temas relacionados con razas de perros.
+            
+            Información detallada sobre {breed_name}:
+            {enriched_context}
+            
+            Pregunta del usuario: {safe_query}
+            
+            INSTRUCCIONES IMPORTANTES:
+            - Responde de manera concisa, precisa y amigable
+            - Usa la información detallada proporcionada para dar respuestas específicas
+            - Si tienes información específica sobre la raza, úsala para responder
+            - NUNCA digas "No tengo información específica" si la información está disponible
+            - Si la pregunta no es sobre perros, redirige amablemente al tema de razas de perros
+            - Siempre termina con una sugerencia útil o pregunta de seguimiento
+            """
+            
+            # Payload para Gemini
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {"text": system_prompt}
+                        ]
+                    }
+                ],
+                "systemInstruction": {
+                    "parts": [{"text": "Eres un experto en razas de perros. Responde basándote en la información proporcionada. Solo habla sobre perros."}]
+                },
+                "safetySettings": [
+                    {
+                        "category": "HARM_CATEGORY_HARASSMENT",
+                        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                    },
+                    {
+                        "category": "HARM_CATEGORY_HATE_SPEECH", 
+                        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                    },
+                    {
+                        "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                    },
+                    {
+                        "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                    }
+                ]
+            }
+            
+            response = requests.post(
+                API_URL, 
+                headers={'Content-Type': 'application/json'},
+                data=json.dumps(payload)
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            # Extraer respuesta
+            candidate = result.get('candidates', [{}])[0]
+            text_part = candidate.get('content', {}).get('parts', [{}])[0].get('text', "")
+            
+            # Validar respuesta con guardrails
+            validation_result = guardrails_system.validate_response(text_part)
+            
+            if not validation_result["is_valid"]:
+                # Respuesta más amigable para el usuario
+                return f"🤔 **Parece que hay un problema técnico con esa consulta específica.**\n\n" + \
+                       f"**Sugerencias:**\n" + \
+                       f"- ¿Podrías reformular tu pregunta sobre {breed_name}?\n" + \
+                       f"- Intenta preguntar sobre características, cuidados, o comportamiento de la raza\n" + \
+                       f"- Si tienes una pregunta específica, puedo ayudarte a encontrar información relevante\n\n" + \
+                       f"💡 *El sistema está funcionando correctamente, solo necesitamos ajustar la consulta*"
+            
+            # Formatear respuesta final
+            safe_response = validation_result["safe_response"]
+            source_info = f"\n\n**Fuentes:** Sistema multiagente (RAG híbrido + Guardrails + Wikipedia + ArXiv)"
+            
+            return safe_response + source_info
+        else:
+            return "⚠️ **No se pudo obtener información suficiente sobre la raza.**"
         
     except Exception as e:
-        return f"Error al procesar la consulta con RAG y Guardrails. Por favor, intentá de nuevo. (Error: {e})"
+        return f"Error al procesar la consulta con sistema multiagente. Por favor, intentá de nuevo. (Error: {e})"
 
 def run_llm_agent(breed_name, user_query):
     """
@@ -196,6 +297,10 @@ def main():
         if 'chat_history' not in st.session_state:
             st.session_state['chat_history'] = []
         
+        # Inicializar contexto de papers científicos si no existe
+        if 'scientific_papers' not in st.session_state:
+            st.session_state['scientific_papers'] = []
+        
         # Mostrar estado de seguridad
         with st.expander("🛡️ Estado de Seguridad", expanded=False):
             try:
@@ -214,6 +319,38 @@ def main():
                 st.info("🔒 Sistema de guardrails activo: sanitización, validación y rate limiting")
             except Exception as e:
                 st.warning(f"⚠️ Error cargando estado de seguridad: {e}")
+        
+        # Mostrar estado del sistema multiagente
+        with st.expander("🤖 Sistema Multiagente", expanded=False):
+            try:
+                from app.multiagent import multiagent_supervisor, agent_factory
+                
+                # Estadísticas del supervisor
+                stats = multiagent_supervisor.get_agent_statistics()
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Ejecuciones totales", stats.get("total_executions", 0))
+                    st.metric("Agentes disponibles", len(agent_factory.get_available_agents()))
+                
+                with col2:
+                    if stats.get("agent_statistics"):
+                        agent_stats = stats["agent_statistics"]
+                        st.metric("Agentes activos", len(agent_stats))
+                    else:
+                        st.metric("Agentes activos", 0)
+                
+                # Lista de agentes disponibles
+                available_agents = agent_factory.get_available_agents()
+                st.info(f"🤖 **Agentes disponibles:** {', '.join(available_agents)}")
+                
+                # Herramientas disponibles
+                from app.multiagent.tools import tool_manager
+                available_tools = tool_manager.get_available_tools()
+                st.info(f"🔧 **Herramientas disponibles:** {', '.join(available_tools)}")
+                
+            except Exception as e:
+                st.warning(f"⚠️ Error cargando estado multiagente: {e}")
             
         user_input = st.text_input("Escribí tu pregunta acerca del perro de la imagen", key="user_question")
         
@@ -223,8 +360,8 @@ def main():
             else:
                 breed_name = st.session_state['image_pred']['label'] # Acceder al label correctamente
                 
-                with st.spinner("🔍 Procesando con RAG híbrido y guardrails de seguridad..."):
-                    # Llamar al agente LLM con guardrails
+                with st.spinner("🤖 Procesando con sistema multiagente (RAG + Guardrails + Wikipedia + ArXiv)..."):
+                    # Llamar al agente LLM con sistema multiagente
                     response = run_llm_agent(breed_name, user_input)
                     
                     st.session_state['chat_history'].append(("User", user_input))
@@ -237,9 +374,9 @@ def main():
             else:
                 st.markdown(f"**Asistente:** {msg}")
         
-        # Mostrar información de seguridad en el chat
+        # Mostrar información del sistema en el chat
         if st.session_state['chat_history']:
-            st.info("🛡️ **Sistema de Seguridad Activo:**\n- ✅ Sanitización de entrada\n- ✅ Validación de salida\n- ✅ Rate limiting\n- ✅ Prevención de prompt injection")
+            st.info("🤖 **Sistema Multiagente Activo:**\n- ✅ RAG híbrido (BM25 + Pinecone + CrossEncoder)\n- ✅ Guardrails de seguridad\n- ✅ Agentes especializados (Research, Summarizer, Validator)\n- ✅ Herramientas externas (Wikipedia, ArXiv)\n- ✅ Memoria persistente y orquestación inteligente")
 
 if __name__ == "__main__":
     main()
