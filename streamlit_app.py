@@ -1,9 +1,7 @@
 import streamlit as st
 from PIL import Image
 from app.vision_service import VisionService
-from app.llm_agent import SimpleAgent
 import json
-import base64
 import torchvision.transforms as transforms
 import requests
 import os
@@ -223,32 +221,33 @@ def run_llm_agent_with_rag(breed_name, user_query):
                 "contents": [
                     {
                         "parts": [
-                                                            {"text": system_prompt}
+                            {"text": system_prompt}
                         ]
                     }
                 ],
                 "systemInstruction": {
-                                            "parts": [{"text": "Eres un experto en razas de perros. Responde basándote en la información proporcionada. Solo habla sobre perros."}]
-                                        },
-                                        "safetySettings": [
-                                            {
-                                                "category": "HARM_CATEGORY_HARASSMENT",
-                                                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                                            },
-                                            {
-                                                "category": "HARM_CATEGORY_HATE_SPEECH", 
-                                                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                                            },
-                                            {
-                                                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                                                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                                            },
-                                            {
-                                                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                                                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                                            }
-                                        ]
-                                    }
+                    "parts": [
+                        {"text": "Eres un experto en razas de perros. Responde basándote en la información proporcionada. Solo habla sobre perros."}]
+                    },
+                "safetySettings": [
+                    {
+                        "category": "HARM_CATEGORY_HARASSMENT",
+                        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                    },
+                    {
+                        "category": "HARM_CATEGORY_HATE_SPEECH", 
+                        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                    },
+                    {
+                        "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                    },
+                    {
+                        "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                    }
+                ]
+            }
             
             response = requests.post(
                 API_URL, 
@@ -267,7 +266,6 @@ def run_llm_agent_with_rag(breed_name, user_query):
             validation_result = guardrails_system.validate_response(text_part)
             
             if not validation_result["is_valid"]:
-                # Respuesta más amigable para el usuario
                 return f"🤔 **Parece que hay un problema técnico con esa consulta específica.**\n\n" + \
                        f"**Sugerencias:**\n" + \
                        f"- ¿Podrías reformular tu pregunta sobre {breed_name}?\n" + \
@@ -275,7 +273,6 @@ def run_llm_agent_with_rag(breed_name, user_query):
                        f"- Si tienes una pregunta específica, puedo ayudarte a encontrar información relevante\n\n" + \
                        f"💡 *El sistema está funcionando correctamente, solo necesitamos ajustar la consulta*"
             
-            # Formatear respuesta final
             safe_response = validation_result["safe_response"]
             source_info = f"\n\n**Fuentes:** Sistema multiagente (RAG híbrido + Guardrails + Wikipedia + ArXiv)"
             
@@ -451,18 +448,12 @@ def render_main_interface():
                     assistant_msg = st.session_state['chat_history'][i + 1]
                     chat_pairs.append((user_msg, assistant_msg))
             
-            # Mostrar pares de conversación (más recientes arriba)
             for i, (user_msg, assistant_msg) in enumerate(reversed(chat_pairs)):
-                # Contenedor para cada par de conversación
                 with st.container():
-                    # Separador entre pares (excepto el primero)
                     if i > 0:
                         st.markdown("---")
                     
-                    # Pregunta del usuario
-                    st.markdown(f"**👤 Tú:** {user_msg[1]}")
-                    
-                    # Respuesta del asistente
+                    st.markdown(f"**👤 Tú:** {user_msg[1]}")  
                     st.markdown(f"**🤖 Asistente:** {assistant_msg[1]}")
         
         # Mostrar información del sistema en el chat

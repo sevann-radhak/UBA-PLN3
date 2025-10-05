@@ -1,4 +1,3 @@
-# scripts/train_vit.py
 import os
 import argparse
 from pathlib import Path
