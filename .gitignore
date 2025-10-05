@@ -61,10 +61,7 @@ Thumbs.db
 *.safetensors
 *.h5
 *.hdf5
-
-# BUT allow the trained model for deployment
-!models/checkpoints/best_model.pt
-!models/checkpoints/
+models/checkpoints/
 
 
 # Data files (large datasets)
