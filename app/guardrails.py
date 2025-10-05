@@ -27,8 +27,11 @@ class SecurityConfig:
             self.allowed_topics = [
                 "perro", "raza", "cuidado", "salud", "entrenamiento", 
                 "alimentación", "ejercicio", "comportamiento", "características",
+                "temperamento", "personalidad", "carácter", "naturaleza",
                 "papers", "científico", "investigación", "genética", "estudios",
-                "artículos", "documentos", "publicaciones", "ciencia"
+                "artículos", "documentos", "publicaciones", "ciencia",
+                "golden", "retriever", "labrador", "pastor", "bulldog",
+                "chihuahua", "poodle", "beagle", "rottweiler", "doberman"
             ]
         
         if self.blocked_patterns is None:
@@ -115,7 +118,16 @@ class InputSanitizer:
         
         follow_up_match = any(pattern in query_lower for pattern in follow_up_patterns)
         
-        return topic_match or follow_up_match
+        # Verificar si contiene palabras relacionadas con perros (más flexible)
+        dog_related_words = [
+            "perro", "perros", "canino", "caninos", "mascota", "mascotas",
+            "golden", "retriever", "labrador", "pastor", "bulldog", "chihuahua",
+            "poodle", "beagle", "rottweiler", "doberman", "husky", "mastiff"
+        ]
+        
+        dog_match = any(word in query_lower for word in dog_related_words)
+        
+        return topic_match or follow_up_match or dog_match
 
 class OutputValidator:
     """Validador de salida del LLM"""

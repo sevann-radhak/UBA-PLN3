@@ -223,41 +223,42 @@ def run_llm_agent_with_rag(breed_name, user_query):
                 "contents": [
                     {
                         "parts": [
-                            {"text": system_prompt}
+                                                            {"text": system_prompt}
                         ]
                     }
                 ],
                 "systemInstruction": {
-                    "parts": [{"text": "Eres un experto en razas de perros. Responde basándote en la información proporcionada. Solo habla sobre perros."}]
-                },
-                "safetySettings": [
-                    {
-                        "category": "HARM_CATEGORY_HARASSMENT",
-                        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                    },
-                    {
-                        "category": "HARM_CATEGORY_HATE_SPEECH", 
-                        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                    },
-                    {
-                        "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                    },
-                    {
-                        "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                    }
-                ]
-            }
+                                            "parts": [{"text": "Eres un experto en razas de perros. Responde basándote en la información proporcionada. Solo habla sobre perros."}]
+                                        },
+                                        "safetySettings": [
+                                            {
+                                                "category": "HARM_CATEGORY_HARASSMENT",
+                                                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                                            },
+                                            {
+                                                "category": "HARM_CATEGORY_HATE_SPEECH", 
+                                                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                                            },
+                                            {
+                                                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                                                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                                            },
+                                            {
+                                                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                                                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                                            }
+                                        ]
+                                    }
             
             response = requests.post(
                 API_URL, 
                 headers={'Content-Type': 'application/json'},
                 data=json.dumps(payload)
             )
+            
             response.raise_for_status()
             result = response.json()
-            
+        
             # Extraer respuesta
             candidate = result.get('candidates', [{}])[0]
             text_part = candidate.get('content', {}).get('parts', [{}])[0].get('text', "")
@@ -317,7 +318,7 @@ def render_main_interface():
         uploaded = st.file_uploader("Subí una imagen del perro", type=['jpg','jpeg','png'])
         if uploaded:
             img = Image.open(uploaded).convert('RGB')
-            st.image(img, caption="Imagen subida", use_container_width=True)
+            st.image(img, caption="Imagen subida", width='stretch')
             vs = load_services('./models/checkpoints/best_model.pt')
             pred_idx, probs = vs.predict(img)
             from app.product_db import get_class_name
@@ -339,7 +340,7 @@ def render_main_interface():
         # Inicializar el historial de chat si no existe
         if 'chat_history' not in st.session_state:
             st.session_state['chat_history'] = []
-        
+            
         # Inicializar contexto de papers científicos si no existe
         if 'scientific_papers' not in st.session_state:
             st.session_state['scientific_papers'] = []
@@ -419,27 +420,50 @@ def render_main_interface():
             except Exception as e:
                 st.warning(f"⚠️ Error cargando sistema de evaluación: {e}")
             
-        user_input = st.text_input("Escribí tu pregunta acerca del perro de la imagen", key="user_question")
-        
-        if st.button("Enviar", key="send_button"):
-            if 'image_pred' not in st.session_state:
-                st.warning("Primero sube una imagen para identificar la raza del perro.")
-            else:
-                breed_name = st.session_state['image_pred']['label'] # Acceder al label correctamente
-                
-                with st.spinner("🤖 Procesando con sistema multiagente (RAG + Guardrails + Wikipedia + ArXiv)..."):
-                    # Llamar al agente LLM con sistema multiagente
-                    response = run_llm_agent(breed_name, user_input)
+        # Usar un formulario para manejar el input y el botón
+        with st.form(key="chat_form", clear_on_submit=True):
+            user_input = st.text_input("Escribí tu pregunta acerca del perro de la imagen")
+            submitted = st.form_submit_button("Enviar")
+            
+            if submitted:
+                if 'image_pred' not in st.session_state:
+                    st.warning("Primero sube una imagen para identificar la raza del perro.")
+                else:
+                    breed_name = st.session_state['image_pred']['label'] # Acceder al label correctamente
+                    
+                    with st.spinner("🤖 Procesando con sistema multiagente (RAG + Guardrails + Wikipedia + ArXiv)..."):
+                        # Llamar al agente LLM con sistema multiagente
+                        response = run_llm_agent(breed_name, user_input)
                     
                     st.session_state['chat_history'].append(("User", user_input))
                     st.session_state['chat_history'].append(("Assistant", response))
         
-        # Mostrar el historial de chat
-        for role, msg in st.session_state['chat_history']:
-            if role == "User":
-                st.markdown(f"**Tú:** {msg}")
-            else:
-                st.markdown(f"**Asistente:** {msg}")
+        # Mostrar el historial de chat (más recientes arriba)
+        if st.session_state['chat_history']:
+            st.markdown("---")  # Separador visual
+            st.markdown("### 💬 Historial de Conversación")
+            
+            # Agrupar preguntas y respuestas en pares
+            chat_pairs = []
+            for i in range(0, len(st.session_state['chat_history']), 2):
+                if i + 1 < len(st.session_state['chat_history']):
+                    user_msg = st.session_state['chat_history'][i]
+                    assistant_msg = st.session_state['chat_history'][i + 1]
+                    chat_pairs.append((user_msg, assistant_msg))
+            
+            # Mostrar pares de conversación (más recientes arriba)
+            for i, (user_msg, assistant_msg) in enumerate(reversed(chat_pairs)):
+                # Contenedor para cada par de conversación
+                with st.container():
+                    # Separador entre pares (excepto el primero)
+                    if i > 0:
+                        st.markdown("---")
+                    
+                    # Pregunta del usuario
+                    st.markdown(f"**👤 Tú:** {user_msg[1]}")
+                    
+                    # Respuesta del asistente
+                    st.markdown(f"**🤖 Asistente:** {assistant_msg[1]}")
         
         # Mostrar información del sistema en el chat
         if st.session_state['chat_history']:
