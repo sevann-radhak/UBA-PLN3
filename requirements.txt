@@ -29,3 +29,6 @@ python-dotenv
 numpy
 pandas
 
+# Dashboard y visualización
+plotly>=5.0.0
+

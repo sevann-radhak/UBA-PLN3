@@ -7,6 +7,7 @@ import base64
 import torchvision.transforms as transforms
 import requests
 import os
+import time
 
 # Define el tamaño de la imagen, debe coincidir con el tamaño de validación usado en el entrenamiento
 img_size = 224
@@ -97,10 +98,41 @@ def run_llm_agent_with_rag(breed_name, user_query):
         )
         
         # 3. EJECUTAR SISTEMA MULTIAGENTE
+        start_time = time.time()
         multiagent_result = multiagent_supervisor.execute_multiagent_workflow(initial_state)
+        execution_time = time.time() - start_time
         
         if not multiagent_result["success"]:
             return f"⚠️ **Error en el sistema multiagente:** {multiagent_result.get('error', 'Error desconocido')}"
+        
+        # 3.1. REGISTRAR MÉTRICAS DE EVALUACIÓN
+        try:
+            from app.evaluation import ir_metrics_calculator, security_metrics_calculator, multiagent_metrics_calculator
+            
+            # Registrar métricas de seguridad
+            security_metrics_calculator.add_security_event(
+                event_type="query_processed",
+                query=user_query,
+                result=security_result,
+                processing_time=execution_time,
+                metadata={"breed_name": breed_name}
+            )
+            
+            # Registrar métricas multiagente
+            agents_used = multiagent_result.get("agents_used", [])
+            tools_used = multiagent_result.get("tools_used", [])
+            multiagent_metrics_calculator.add_session(
+                session_id=session_id,
+                agents_used=agents_used,
+                tools_used=tools_used,
+                execution_time=execution_time,
+                success=multiagent_result["success"],
+                result=multiagent_result
+            )
+            
+        except Exception as e:
+            # No fallar si las métricas no se pueden registrar
+            pass
         
         # 4. OBTENER INFORMACIÓN COMPILADA
         research_data = multiagent_result.get("research_results", [])
@@ -351,6 +383,31 @@ def main():
                 
             except Exception as e:
                 st.warning(f"⚠️ Error cargando estado multiagente: {e}")
+        
+        # Mostrar estado del sistema de evaluación
+        with st.expander("📊 Sistema de Evaluación", expanded=False):
+            try:
+                from app.evaluation import ir_metrics_calculator, security_metrics_calculator, multiagent_metrics_calculator
+                
+                # Métricas IR
+                ir_metrics = ir_metrics_calculator.calculate_global_metrics()
+                if ir_metrics:
+                    st.metric("IR Score (MAP)", f"{ir_metrics.get('avg_map', 0):.3f}")
+                
+                # Métricas de seguridad
+                security_metrics = security_metrics_calculator.calculate_security_metrics()
+                st.metric("Security Score", f"{security_metrics.security_score:.1f}")
+                
+                # Métricas multiagente
+                multiagent_metrics = multiagent_metrics_calculator.calculate_multiagent_metrics()
+                st.metric("Multiagent Score", f"{multiagent_metrics.efficiency_score:.1f}")
+                
+                # Botón para abrir dashboard completo
+                if st.button("📊 Abrir Dashboard de Evaluación"):
+                    st.info("Dashboard de evaluación disponible en: /evaluation")
+                
+            except Exception as e:
+                st.warning(f"⚠️ Error cargando sistema de evaluación: {e}")
             
         user_input = st.text_input("Escribí tu pregunta acerca del perro de la imagen", key="user_question")
         
