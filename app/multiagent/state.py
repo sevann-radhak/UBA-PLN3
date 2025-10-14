@@ -95,3 +95,5 @@ class MemorySystem:
 
 # Instancia global del sistema de memoria
 memory_system = MemorySystem()
+
+

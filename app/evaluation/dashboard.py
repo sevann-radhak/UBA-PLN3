@@ -430,3 +430,5 @@ class EvaluationDashboard:
 
 # Instancia global del dashboard
 evaluation_dashboard = EvaluationDashboard()
+
+

@@ -180,3 +180,5 @@ class IRMetricsCalculator:
 
 # Instancia global del calculador de métricas IR
 ir_metrics_calculator = IRMetricsCalculator()
+
+
